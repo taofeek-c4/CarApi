@@ -1,27 +1,28 @@
 ﻿using CarApi.Models;
+using Dapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Data.SqlTypes;
-    
+
 namespace CarApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
     public class CarController : ControllerBase
     {
-        private readonly string connectionString ;   
-        public CarController(IConfiguration configuration )
+        private readonly string connectionString;
+        public CarController(IConfiguration configuration)
         {
             connectionString = configuration["ConnectionStrings:SqlServerDB"] ?? "";
         }
-
-        // For the car brands selection
+        
+        // This guy uses Dapper to fetch the carbrands from the database
         [HttpGet("CarBrands")]
         public IActionResult GetCarBrand()
         {
-            List<CarBrand> carBrands = new List<CarBrand>();
-
             try
             {
                 using (var connection = new SqlConnection(connectionString))
@@ -29,113 +30,98 @@ namespace CarApi.Controllers
                     connection.Open();
 
                     string sql = "SELECT * FROM CarBrands WHERE ActiveFlag = 1";
-                    using (var Command = new SqlCommand(sql, connection))
-                    {
-                        using (var reader = Command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                CarBrand carBrand = new CarBrand();
-                                carBrand.CarBrandId = reader.GetInt32(0);
-                                carBrand.BrandName = reader.GetString(1);
-                                carBrand.ActiveFlag = reader.GetBoolean(2);
-                                carBrands.Add(carBrand);    
-                            }
-                        }
-                    }
+
+                    var carBrands = connection.Query<CarBrand>(sql).ToList();
+
+                    return Ok(carBrands);
                 }
-                return Ok(carBrands);
             }
             catch (Exception ex)
             {
-                ModelState.AddModelError("carBrand", $"An error occured,{ex}");
+                ModelState.AddModelError("carBrand", $"An error occurred: {ex.Message}");
                 return BadRequest(ModelState);
             }
         }
 
-    //// For the car models selection
-    [HttpGet("CarModels")]
-    public IActionResult GetCarModels([FromQuery]int id)
-    {
-        List<CarBrandCarMakeMatrix> carBrandCarMakeMatrix = new List<CarBrandCarMakeMatrix>();
-    
-        try
-        {
-            using (var connection = new SqlConnection(connectionString))
-            {
-                connection.Open();
-            
-                string sql = @"SELECT cbcm.CarMakeId, cbcm.CarBrandId, 
-                                      cb.BrandName AS CarBrand, 
-                                      cm.MakeName AS CarMake 
-                               FROM CarBrandCarMakeMatrix cbcm 
-                               JOIN CarBrands cb ON cb.CarBrandId = cbcm.CarBrandId 
-                               JOIN CarMake cm ON cm.CarMakeId = cbcm.CarMakeId 
-                               WHERE cb.CarBrandId = @CarBrandId 
-                               AND cb.ActiveFlag = 1 
-                               AND cm.ActiveFlag = 1";
-                using (var Command = new SqlCommand(sql, connection))
-                {
-                    Command.Parameters.AddWithValue("@CarBrandId", id);
-
-                    using (var reader = Command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            CarBrandCarMakeMatrix carBrand = new CarBrandCarMakeMatrix();
-
-                            carBrand.CarMakeId  = reader.GetInt32(0); 
-                            carBrand.CarBrandId = reader.GetInt32(1); 
-                            carBrand.CarBrandName = reader.GetString(2); 
-                            carBrand.CarMakeName    = reader.GetString(3);  
-
-                            carBrandCarMakeMatrix.Add(carBrand);
-                        }
-                    }
-                }
-            }   
-            return Ok(carBrandCarMakeMatrix);
-        }
-        catch (Exception ex)
-        {
-            ModelState.AddModelError("carMake", $"An error occurred: {ex.Message}");
-            return BadRequest(ModelState);
-        }
-    }
-
-        // For the sumbit button
-        [HttpPost("Submit")]
-        public IActionResult Submit(Submit submit)
+        // This guy uses dapper to fetch the carmodels from the database
+        [HttpGet("CarModels")]
+        public  IActionResult GetCarModels([FromQuery] string CarBrand)
         {
             try
             {
-                if (submit == null)
-                {
-                    ModelState.AddModelError("Submit", "Invalid CarBrand or CarMake.");
-                    return BadRequest(ModelState);
-                }
                 using (var connection = new SqlConnection(connectionString))
                 {
-                    connection.Open();
+                     connection.Open();
 
-                    string sql = "INSERT INTO Submit" +
-                                 "(CarBrandId, CarMakeId)" +
-                                 "VALUES (@CarBrand, @CarMake)";
-                    using (var command = new SqlCommand(sql, connection))
+                    var sql = @"SELECT
+                                      cbcm.CarMakeId,
+                                      cbcm.CarBrandId,
+                                      cb.BrandName AS CarBrand, 
+                                      cm.MakeName AS CarMake
+                                    FROM CarBrandCarMakeMatrix cbcm
+                                    JOIN CarBrands cb ON cb.CarBrandId = cbcm.CarBrandId
+                                    JOIN CarMake cm ON cm.CarMakeId = cbcm.CarMakeId
+                                    WHERE cb.BrandName = @CarBrand
+                                    AND cb.ActiveFlag = 1
+                                    AND cm.ActiveFlag = 1";
+
+                    var carBrandCarMakeMatrix = connection.Query<object>(sql, new { CarBrand }).ToList();
+
+                    if (carBrandCarMakeMatrix.Count == 0)
                     {
-                        command.Parameters.AddWithValue("@CarBrand", submit.CarBrandId);
-                        command.Parameters.AddWithValue("@CarMake", submit.CarMakeId);
-                        command.ExecuteNonQuery();
+                        return NotFound(new { Message = "No car models found for the selected brand or the brand is inactive." });
                     }
+
+                    return Ok(carBrandCarMakeMatrix);
                 }
-                return Ok(new { Message = "Submission successful", Data = submit });
             }
             catch (Exception ex)
             {
-                ModelState.AddModelError("Product", $"Sorry, an error occurred: {ex.Message}");
+                ModelState.AddModelError("carMake", $"An error occurred: {ex.Message}");
                 return BadRequest(ModelState);
             }
         }
 
+        // This guy uses dapper to insert the userinput(carbrands and carmodels) in the submit from the database
+        [HttpPost ("Submit")]
+        public async Task<IActionResult> SubmitClick([FromBody] Submit submit)
+        {
+            try
+            {
+                using (var connection = new SqlConnection(connectionString))
+                {
+                    await connection.OpenAsync();
+
+                    var sql = @"INSERT INTO Submit (CarBrandId, CarMakeId)
+                        SELECT cbcm.CarBrandId, cbcm.CarMakeId
+                        FROM CarBrandCarMakeMatrix cbcm
+                        JOIN CarBrands cb ON cb.CarBrandId = cbcm.CarBrandId
+                        JOIN CarMake cm ON cm.CarMakeId = cbcm.CarMakeId
+                        WHERE cb.BrandName = @BrandName
+                        AND cm.MakeName = @MakeName
+                        AND cb.ActiveFlag = 1
+                        AND cm.ActiveFlag = 1;";
+
+                    var parameters = new DynamicParameters();
+                    parameters.Add("@BrandName", submit.BrandName);
+                    parameters.Add("@MakeName", submit.MakeName);
+
+                    var rowsAffected = await connection.ExecuteAsync(sql, parameters);
+
+                    if (rowsAffected > 0)
+                    {
+                        return Ok("Submission successful.");
+                    }
+                    else
+                    {
+                        return NotFound("No matching car brand or make found.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return BadRequest($"An error occurred: {ex.Message}");
+            }
+        }
     }
 }

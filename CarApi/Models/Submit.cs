@@ -6,7 +6,14 @@ namespace CarApi.Models
     {
         [Required]
         public int  CarBrandId { get; set; }
+
+        public string? BrandName { get; set; }
+
         [Required]
-        public int  CarMakeId { get; set; } 
+        public int  CarMakeId { get; set; }
+
+        public string? MakeName { get; set; }
+
+        public DateTime CreatedAt { get; set; }
     }
 }
