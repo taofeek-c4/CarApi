@@ -32,11 +32,11 @@ namespace CarApi.Controllers
         }
 
         [HttpGet("CarModels")]
-        public IActionResult GetCarModels([FromQuery] int CarBrandId)
+        public IActionResult GetCarModels([FromQuery] string BrandName)
         {
             try
             {
-                var carMake = _carRepository.GetCarModelsByBrandId(CarBrandId).ToList();
+                var carMake = _carRepository.GetCarModelsByBrandName(BrandName).ToList();
 
                 if (carMake.Count == 0)
                 {

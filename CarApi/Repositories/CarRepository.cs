@@ -24,7 +24,7 @@ namespace CarApi.Repositories
             }
         }
 
-        public IEnumerable<CarModel> GetCarModelsByBrandId(int carBrandId)
+        public IEnumerable<CarModel> GetCarModelsByBrandName(string BrandName)
         {
             using (var connection = new SqlConnection(_connectionString))
             {
@@ -37,10 +37,10 @@ namespace CarApi.Repositories
                     FROM CarBrandCarMakeMatrix cbcm
                     JOIN CarBrands cb ON cb.CarBrandId = cbcm.CarBrandId
                     JOIN CarMake cm ON cm.CarMakeId = cbcm.CarMakeId
-                    WHERE cbcm.CarBrandId = @CarBrandId
+                    WHERE cb.BrandName = @BrandName
                     AND cb.ActiveFlag = 1
                     AND cm.ActiveFlag = 1";
-                return connection.Query<CarModel>(sql, new { CarBrandId = carBrandId });
+                return connection.Query<CarModel>(sql, new { BrandName = BrandName });
             }
         }
 
