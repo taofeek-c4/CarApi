@@ -1,3 +1,5 @@
+using CarApi.Repositories;
+
 namespace CarApi
 {
     public class Program
@@ -9,15 +11,15 @@ namespace CarApi
             // Add services to the container.
             builder.Services.AddControllers();
 
-            // Add CORS policy to allow all origins
+            // Add CORS policy to allow all origins, headers, and methods.
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowAll",
-                    builder =>
+                    corsBuilder =>
                     {
-                        builder.AllowAnyOrigin()
-                               .AllowAnyHeader()
-                               .AllowAnyMethod();
+                        corsBuilder.AllowAnyOrigin()   // Allows all origins
+                                   .AllowAnyHeader()   // Allows all headers
+                                   .AllowAnyMethod();  // Allows all HTTP methods
                     });
             });
 
@@ -33,16 +35,28 @@ namespace CarApi
                 app.UseSwaggerUI();
             }
 
+            // Use HTTPS redirection (ensure your frontend also uses https if this is active)
             app.UseHttpsRedirection();
 
-            // Use CORS
+            // Enable the CORS policy
             app.UseCors("AllowAll");
 
+            // Use authorization middleware
             app.UseAuthorization();
 
+            // Map controllers to endpoints
             app.MapControllers();
 
             app.Run();
+        }
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddScoped<CarRepository>(provider =>
+            {
+                var configuration = provider.GetRequiredService<IConfiguration>();
+                var connectionString = configuration["ConnectionStrings:SqlServerDB"];
+                return new CarRepository(connectionString);
+            });
         }
     }
 }
